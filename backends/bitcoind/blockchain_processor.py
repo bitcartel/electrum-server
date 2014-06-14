@@ -589,6 +589,69 @@ class BlockchainProcessor(Processor):
                 error = str(e) + ': ' + repr(params)
                 print_log("tx get error:", error)
 
+        elif method == 'blockchain.transaction.get_txid_byte_offset':
+            try:
+                tx_hash = params[0]
+                tx_height = params[1]
+                block_hash = self.bitcoind('getblockhash', [tx_height])
+                block = self.bitcoind('getblock', [block_hash])
+                index = block['tx'].index(tx_hash)
+                block = self.getfullblock(block_hash)
+                rawtxdata = block['tx']
+                # tx_count is stored as varint, https://en.bitcoin.it/wiki/Protocol_specification#Variable_length_integer
+                tx_count = len(block['tx'])
+                if tx_count < 0xfd:
+                    tx_count_length = 1
+                elif tx_count < 0xffff:
+                    tx_count_length = 3
+                elif tx_count < 0xffffffff:
+                    tx_count_length = 5
+                else:
+                    tx_count_length = 9
+                # Block header length is 80 bytes before varint
+                offset = 80 + tx_count_length
+                for x in range(0, index):
+                    # hex string / 2 = num bytes
+                    offset += (len(block['tx'][x]) / 2)
+                result = offset
+            except BaseException, e:
+                error = str(e) + ': ' + repr(params)
+                print_log("tx get byte offset error:", error)
+
+        elif method == 'blockchain.transaction.get_txid_from_byte_offset':
+            try:
+                tx_offset = params[0]
+                tx_height = params[1]
+                block_hash = self.bitcoind('getblockhash', [tx_height])
+                block_summary = self.bitcoind('getblock', [block_hash])
+                block = self.getfullblock(block_hash)
+                tx_count = len(block['tx'])
+
+                # Block header length is 80 before varint
+                offset = 80
+                if tx_count < 0xfd:
+                    offset += 1
+                elif tx_count < 0xffff:
+                    offset += 3
+                elif tx_count < 0xffffffff:
+                    offset += 5
+                else:
+                    offset += 9
+
+                for x in range(0, tx_count):
+                    if offset == tx_offset:
+                        result = block_summary['tx'][x]
+                        break
+                    elif offset > tx_offset:
+                        break
+                    n = len(block['tx'][x]) / 2
+                    offset += n
+
+            except BaseException, e:
+                error = str(e) + ': ' + repr(params)
+                print_log("tx get txid from byte offset error:", error)
+
+
         else:
             error = "unknown method:%s" % method
 
